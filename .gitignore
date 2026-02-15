@@ -1,0 +1,138 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# =============================================================================
+# Dependencies & Package Managers
+# =============================================================================
+
+# Node.js / pnpm
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+.npm
+.yarn/
+.yarnrc.yml
+
+# Go
+vendor/
+
+# =============================================================================
+# Next.js / React / TypeScript (Frontend)
+# =============================================================================
+
+# Build output
+.next/
+out/
+build/
+dist/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# =============================================================================
+# Go (Backend)
+# =============================================================================
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/backend/bin/
+/backend/cmd/**/main
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+coverage.html
+
+# =============================================================================
+# Environment & Secrets
+# =============================================================================
+
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# =============================================================================
+# Debug & Logs
+# =============================================================================
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+logs/
+
+# =============================================================================
+# IDE & Editors
+# =============================================================================
+
+# VSCode
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Cursor
+.cursor/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# =============================================================================
+# OS Generated
+# =============================================================================
+
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =============================================================================
+# Hosting & Deployment
+# =============================================================================
+
+# Vercel
+.vercel
+
+# AWS / SAM
+.aws-sam/
+samconfig.toml
+
+# Terraform (if added later)
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# =============================================================================
+# Misc
+# =============================================================================
+
+# Turbo (if used)
+.turbo
+
+# Testing
+.nyc_output/
+coverage/
+
+# Local development
+*.local
