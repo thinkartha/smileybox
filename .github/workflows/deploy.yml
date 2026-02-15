@@ -30,6 +30,8 @@ on:
 #   API_GATEWAY_URL          - (optional) Fallback API URL for frontend build; otherwise from stack output
 #   ACM_CERTIFICATE_ARN      - (optional) ACM cert ARN for custom domain
 #   SAM_S3_BUCKET            - S3 bucket for SAM deployment artifacts
+#   SUBNET_IDS               - Subnet IDs for Lambda, comma-separated (e.g. subnet-xxx,subnet-yyy)
+#   VPC in SSM               - Create parameter /supportdesk/vpc-id (String) with your VPC ID
 #
 # Note: API Gateway is created/updated automatically by the SAM stack (supportdesk-api).
 #       You do NOT need to create API Gateway ahead of time.
@@ -203,7 +205,9 @@ jobs:
               DBPassword=${{ secrets.DB_PASSWORD }} \
               DBName=${{ secrets.DB_NAME }} \
               JWTSecret=${{ secrets.JWT_SECRET }} \
-              FrontendURL=${{ secrets.FRONTEND_URL || '*' }}
+              FrontendURL=${{ secrets.FRONTEND_URL || '*' }} \
+              VpcId=/supportdesk/vpc-id \
+              SubnetIds=${{ secrets.SUBNET_IDS }}
 
       - name: Output API Gateway URL
         run: |

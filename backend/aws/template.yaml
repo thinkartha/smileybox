@@ -47,12 +47,10 @@ Parameters:
     Description: Frontend URL for CORS (e.g., https://yourdomain.com)
   VpcId:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /supportdesk/vpc-id
-    Description: SSM parameter path for VPC ID
+    Description: SSM parameter path for VPC ID (e.g. /supportdesk/vpc-id)
   SubnetIds:
-    Type: AWS::SSM::Parameter::Value<List<String>>
-    Default: /supportdesk/subnet-ids
-    Description: SSM parameter path for subnet ID list
+    Type: CommaDelimitedList
+    Description: Subnet IDs for Lambda (comma-separated, e.g. subnet-xxx,subnet-yyy)
 
 Resources:
   SupportDeskApi:
