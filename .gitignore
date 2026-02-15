@@ -33,6 +33,9 @@ next-env.d.ts
 # Go (Backend)
 # =============================================================================
 
+# Local Go module cache (e.g. from GOMODCACHE=./.gomodcache)
+backend/.gomodcache/
+
 # Binaries
 *.exe
 *.exe~
