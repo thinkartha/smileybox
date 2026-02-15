@@ -30,8 +30,8 @@ on:
 #   API_GATEWAY_URL          - (optional) Fallback API URL for frontend build; otherwise from stack output
 #   ACM_CERTIFICATE_ARN      - (optional) ACM cert ARN for custom domain
 #   SAM_S3_BUCKET            - S3 bucket for SAM deployment artifacts
+#   VPC_ID                   - VPC ID for Lambda (e.g. vpc-0abc123def456)
 #   SUBNET_IDS               - Subnet IDs for Lambda, comma-separated (e.g. subnet-xxx,subnet-yyy)
-#   VPC in SSM               - Create parameter /supportdesk/vpc-id (String) with your VPC ID
 #
 # Note: API Gateway is created/updated automatically by the SAM stack (supportdesk-api).
 #       You do NOT need to create API Gateway ahead of time.
@@ -183,6 +183,27 @@ jobs:
         run: |
           zip -j function.zip bootstrap
 
+      - name: Check required Lambda VPC secrets
+        run: |
+          if [[ -z "${{ secrets.VPC_ID }}" ]] || [[ -z "${{ secrets.SUBNET_IDS }}" ]]; then
+            echo "::error::GitHub secrets VPC_ID and SUBNET_IDS must be set for Lambda deploy (repo Settings -> Secrets -> Actions)."
+            exit 1
+          fi
+          echo "VPC and Subnet secrets are set."
+
+      - name: Remove stack if in failed/rollback state
+        run: |
+          STATUS=$(aws cloudformation describe-stacks --stack-name supportdesk-api --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+          if [[ "$STATUS" == "ROLLBACK_COMPLETE" ]] || [[ "$STATUS" == "CREATE_FAILED" ]] || [[ "$STATUS" == "ROLLBACK_FAILED" ]]; then
+            echo "Stack is in $STATUS - deleting so deploy can create a fresh stack..."
+            aws cloudformation delete-stack --stack-name supportdesk-api
+            echo "Waiting for stack delete to complete..."
+            aws cloudformation wait stack-delete-complete --stack-name supportdesk-api || true
+            echo "Stack deleted. Deploy will create a new one."
+          else
+            echo "Stack status: $STATUS - proceeding with deploy (create or update)."
+          fi
+
       - name: Deploy Lambda + API Gateway with SAM
         working-directory: backend
         run: |
@@ -206,8 +227,22 @@ jobs:
               DBName=${{ secrets.DB_NAME }} \
               JWTSecret=${{ secrets.JWT_SECRET }} \
               FrontendURL=${{ secrets.FRONTEND_URL || '*' }} \
-              VpcId=/supportdesk/vpc-id \
+              VpcId=${{ secrets.VPC_ID }} \
               SubnetIds=${{ secrets.SUBNET_IDS }}
+
+      - name: Show stack failure reason (if deploy failed)
+        if: failure()
+        run: |
+          echo "=========================================="
+          echo "  Stack failure details (recent events)"
+          echo "=========================================="
+          aws cloudformation describe-stack-events \
+            --stack-name supportdesk-api \
+            --query "StackEvents[?ResourceStatus==\`CREATE_FAILED\` || ResourceStatus==\`UPDATE_FAILED\`].[LogicalResourceId,ResourceStatusReason]" \
+            --output table 2>/dev/null || true
+          echo ""
+          echo "Full status:"
+          aws cloudformation describe-stacks --stack-name supportdesk-api --query "Stacks[0].[StackStatus,StackStatusReason]" --output table 2>/dev/null || true
 
       - name: Output API Gateway URL
         run: |
