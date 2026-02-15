@@ -27,7 +27,8 @@ on:
 #   JWT_SECRET               - signing key for JWT tokens
 #   S3_BUCKET_NAME           - S3 bucket for frontend
 #   CLOUDFRONT_DISTRIBUTION  - CloudFront distribution ID
-#   API_GATEWAY_URL          - (optional) Fallback API URL for frontend build; otherwise from stack output
+#   FRONTEND_URL             - (optional) CORS + custom domain, e.g. https://supportfix.ai
+#   API_GATEWAY_URL          - (optional) Custom API URL for frontend build, e.g. https://api.supportfix.ai
 #   ACM_CERTIFICATE_ARN      - (optional) ACM cert ARN for custom domain
 #   SAM_S3_BUCKET            - S3 bucket for SAM deployment artifacts
 #   VPC_ID                   - VPC ID for Lambda (e.g. vpc-0abc123def456)
@@ -285,12 +286,18 @@ jobs:
       - name: Get API Gateway URL
         id: api_url
         run: |
-          # Try to get from deployed stack, fallback to secret
-          API_URL=$(aws cloudformation describe-stacks \
-            --stack-name supportdesk-api \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
-            --output text 2>/dev/null || echo "${{ secrets.API_GATEWAY_URL }}")
-          echo "url=$API_URL" >> $GITHUB_OUTPUT
+          # Prefer custom domain (API_GATEWAY_URL) if set; otherwise use stack output
+          if [[ -n "${{ secrets.API_GATEWAY_URL }}" ]]; then
+            echo "url=${{ secrets.API_GATEWAY_URL }}" >> $GITHUB_OUTPUT
+            echo "Using custom API URL: ${{ secrets.API_GATEWAY_URL }}"
+          else
+            API_URL=$(aws cloudformation describe-stacks \
+              --stack-name supportdesk-api \
+              --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
+              --output text 2>/dev/null || echo "")
+            echo "url=${API_URL}" >> $GITHUB_OUTPUT
+            echo "Using API URL: ${API_URL}"
+          fi
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
