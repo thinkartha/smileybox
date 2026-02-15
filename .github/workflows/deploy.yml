@@ -29,9 +29,12 @@ on:
 #   JWT_SECRET               - signing key for JWT tokens
 #   S3_BUCKET_NAME           - S3 bucket for frontend
 #   CLOUDFRONT_DISTRIBUTION  - CloudFront distribution ID
-#   API_GATEWAY_URL          - API Gateway endpoint URL
+#   API_GATEWAY_URL          - (optional) Fallback API URL for frontend build; otherwise from stack output
 #   ACM_CERTIFICATE_ARN      - (optional) ACM cert ARN for custom domain
 #   SAM_S3_BUCKET            - S3 bucket for SAM deployment artifacts
+#
+# Note: API Gateway is created/updated automatically by the SAM stack (supportdesk-api).
+#       You do NOT need to create API Gateway ahead of time.
 # -------------------------------------------------------------------
 
 env:
@@ -134,10 +137,10 @@ jobs:
           fi
 
   # ================================================================
-  # Job 3: Build and deploy Go backend to Lambda
+  # Job 3: Build and deploy Go backend (Lambda + API Gateway in one stack)
   # ================================================================
   deploy-backend:
-    name: Deploy Backend (Lambda)
+    name: Deploy Backend (Lambda + API Gateway)
     runs-on: ubuntu-latest
     needs: [changes, deploy-database]
     if: |
@@ -176,13 +179,14 @@ jobs:
         run: |
           zip -j function.zip bootstrap
 
-      - name: Deploy with SAM
+      - name: Deploy Lambda + API Gateway with SAM
         working-directory: backend
         run: |
           # Install SAM CLI
           pip install aws-sam-cli
 
-          # Build and deploy
+          # Deploys Lambda and API Gateway together (one CloudFormation stack).
+          # API Gateway is created/updated automatically; no need to create it beforehand.
           sam deploy \
             --template-file aws/template.yaml \
             --stack-name supportdesk-api \
@@ -199,14 +203,14 @@ jobs:
               JWTSecret=${{ secrets.JWT_SECRET }} \
               FrontendURL=${{ secrets.FRONTEND_URL || '*' }}
 
-      - name: Output API URL
+      - name: Output API Gateway URL
         run: |
           API_URL=$(aws cloudformation describe-stacks \
             --stack-name supportdesk-api \
             --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
             --output text)
           echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
-          echo "Backend deployed at: $API_URL"
+          echo "Lambda + API Gateway deployed. API URL: $API_URL"
 
   # ================================================================
   # Job 4: Build and deploy Next.js frontend to S3 + CloudFront
