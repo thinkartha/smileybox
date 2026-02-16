@@ -1,53 +1,40 @@
 package handlers
 
 import (
-	"database/sql"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/supporttickr/backend/internal/middleware"
 	"github.com/supporttickr/backend/internal/models"
+	"github.com/supporttickr/backend/internal/store"
 )
 
 type ApprovalHandler struct {
-	DB     *sql.DB
-	Schema string
+	Store store.Store
 }
 
 func (h *ApprovalHandler) List(w http.ResponseWriter, r *http.Request) {
 	role := middleware.GetRole(r.Context())
 	orgID := middleware.GetOrgID(r.Context())
 
-	query := `SELECT cr.id, cr.ticket_id, cr.proposed_type, cr.reason, cr.internal_approval, cr.client_approval, cr.proposed_by, cr.created_at
-		FROM ` + h.Schema + `.conversion_requests cr
-		JOIN ` + h.Schema + `.tickets t ON t.id = cr.ticket_id`
-
-	var rows *sql.Rows
-	var err error
-
-	if role == "client" && orgID != "" {
-		query += ` WHERE t.organization_id = $1 ORDER BY cr.created_at DESC`
-		rows, err = h.DB.Query(query, orgID)
-	} else {
-		query += ` ORDER BY cr.created_at DESC`
-		rows, err = h.DB.Query(query)
-	}
-
+	list, err := h.Store.ListConversionRequestsPending(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to query approvals: "+err.Error())
 		return
 	}
-	defer rows.Close()
 
 	var approvals []models.ConversionRequest
-	for rows.Next() {
-		var cr models.ConversionRequest
-		if err := rows.Scan(&cr.ID, &cr.TicketID, &cr.ProposedType, &cr.Reason, &cr.InternalApproval, &cr.ClientApproval, &cr.ProposedBy, &cr.CreatedAt); err == nil {
-			approvals = append(approvals, cr)
+	for _, cr := range list {
+		if role == "client" && orgID != "" {
+			t, _ := h.Store.GetTicket(r.Context(), cr.TicketID)
+			if t == nil || t.OrganizationID != orgID {
+				continue
+			}
 		}
+		approvals = append(approvals, cr)
 	}
-
 	if approvals == nil {
 		approvals = []models.ConversionRequest{}
 	}
@@ -75,7 +62,6 @@ func (h *ApprovalHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate permission: internal users approve internal side, clients approve client side
 	if req.Side == "internal" && role == "client" {
 		writeError(w, http.StatusForbidden, "clients cannot approve internal side")
 		return
@@ -85,40 +71,36 @@ func (h *ApprovalHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var column string
+	var internalApproval, clientApproval *string
 	if req.Side == "internal" {
-		column = "internal_approval"
+		internalApproval = &req.Status
 	} else {
-		column = "client_approval"
+		clientApproval = &req.Status
 	}
 
-	_, err := h.DB.Exec(
-		fmt.Sprintf(`UPDATE %s.conversion_requests SET %s = $1 WHERE id = $2`, h.Schema, column),
-		req.Status, crID,
-	)
-	if err != nil {
+	if err := h.Store.UpdateConversionRequest(r.Context(), crID, internalApproval, clientApproval); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update approval")
 		return
 	}
 
-	// Check if both sides are now approved - if so, update ticket category
-	var cr models.ConversionRequest
-	err = h.DB.QueryRow(
-		`SELECT id, ticket_id, proposed_type, internal_approval, client_approval FROM `+h.Schema+`.conversion_requests WHERE id = $1`,
-		crID,
-	).Scan(&cr.ID, &cr.TicketID, &cr.ProposedType, &cr.InternalApproval, &cr.ClientApproval)
-
-	if err == nil && cr.InternalApproval == "approved" && cr.ClientApproval == "approved" {
-		h.DB.Exec(`UPDATE `+h.Schema+`.tickets SET category = $1 WHERE id = $2`, cr.ProposedType, cr.TicketID)
+	cr, err := h.Store.GetConversionByID(r.Context(), crID)
+	if err != nil || cr == nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+		return
 	}
 
-	// Log activity
-	h.DB.Exec(
-		`INSERT INTO `+h.Schema+`.activities (id, type, description, user_id, ticket_id) VALUES ($1, 'conversion-approved', $2, $3, $4)`,
-		"act-"+uuid.NewString()[:8],
-		fmt.Sprintf("%s %s conversion for %s", req.Side, req.Status, cr.TicketID),
-		userID, cr.TicketID,
-	)
+	if cr.InternalApproval == "approved" && cr.ClientApproval == "approved" {
+		_ = h.Store.UpdateTicketCategory(r.Context(), cr.TicketID, cr.ProposedType)
+	}
+
+	_ = h.Store.CreateActivity(r.Context(), &models.ActivityItem{
+		ID:          "act-" + uuid.NewString()[:8],
+		Type:        "conversion-approved",
+		Description: fmt.Sprintf("%s %s conversion for %s", req.Side, req.Status, cr.TicketID),
+		UserID:      userID,
+		TicketID:    &cr.TicketID,
+		CreatedAt:   time.Now().UTC(),
+	})
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }

@@ -1,9 +1,6 @@
 package models
 
-import (
-	"database/sql"
-	"time"
-)
+import "time"
 
 // Organization represents a client organization
 type Organization struct {
@@ -16,14 +13,14 @@ type Organization struct {
 
 // User represents a system user
 type User struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	Email          string         `json:"email"`
-	PasswordHash   string         `json:"-"`
-	Role           string         `json:"role"`
-	OrganizationID sql.NullString `json:"organizationId"`
-	Avatar         string         `json:"avatar"`
-	CreatedAt      time.Time      `json:"createdAt"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Email          string    `json:"email"`
+	PasswordHash   string    `json:"-"`
+	Role           string    `json:"role"`
+	OrganizationID *string   `json:"organizationId"`
+	Avatar         string    `json:"avatar"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 // UserResponse is the JSON-safe version of User
@@ -38,32 +35,30 @@ type UserResponse struct {
 
 func (u *User) ToResponse() UserResponse {
 	r := UserResponse{
-		ID:     u.ID,
-		Name:   u.Name,
-		Email:  u.Email,
-		Role:   u.Role,
-		Avatar: u.Avatar,
-	}
-	if u.OrganizationID.Valid {
-		r.OrganizationID = &u.OrganizationID.String
+		ID:             u.ID,
+		Name:           u.Name,
+		Email:          u.Email,
+		Role:           u.Role,
+		Avatar:         u.Avatar,
+		OrganizationID: u.OrganizationID,
 	}
 	return r
 }
 
 // Ticket represents a support ticket
 type Ticket struct {
-	ID             string         `json:"id"`
-	Title          string         `json:"title"`
-	Description    string         `json:"description"`
-	Status         string         `json:"status"`
-	Priority       string         `json:"priority"`
-	Category       string         `json:"category"`
-	OrganizationID string         `json:"organizationId"`
-	CreatedBy      string         `json:"createdBy"`
-	AssignedTo     sql.NullString `json:"assignedTo"`
-	HoursWorked    float64        `json:"hoursWorked"`
-	CreatedAt      time.Time      `json:"createdAt"`
-	UpdatedAt      time.Time      `json:"updatedAt"`
+	ID             string    `json:"id"`
+	Title          string    `json:"title"`
+	Description    string    `json:"description"`
+	Status         string    `json:"status"`
+	Priority       string    `json:"priority"`
+	Category       string    `json:"category"`
+	OrganizationID string    `json:"organizationId"`
+	CreatedBy      string    `json:"createdBy"`
+	AssignedTo     *string   `json:"assignedTo"`
+	HoursWorked    float64   `json:"hoursWorked"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // TicketResponse is the JSON-safe version
@@ -95,14 +90,12 @@ func (t *Ticket) ToResponse() TicketResponse {
 		Category:       t.Category,
 		OrganizationID: t.OrganizationID,
 		CreatedBy:      t.CreatedBy,
+		AssignedTo:     t.AssignedTo,
 		HoursWorked:    t.HoursWorked,
 		CreatedAt:      t.CreatedAt,
 		UpdatedAt:      t.UpdatedAt,
 		Messages:       []Message{},
 		TimeEntries:    []TimeEntry{},
-	}
-	if t.AssignedTo.Valid {
-		r.AssignedTo = &t.AssignedTo.String
 	}
 	return r
 }
@@ -156,12 +149,12 @@ type Invoice struct {
 
 // ActivityItem represents an activity log entry
 type ActivityItem struct {
-	ID          string         `json:"id"`
-	Type        string         `json:"type"`
-	Description string         `json:"description"`
-	UserID      string         `json:"userId"`
-	TicketID    sql.NullString `json:"ticketId"`
-	CreatedAt   time.Time      `json:"createdAt"`
+	ID          string    `json:"id"`
+	Type        string    `json:"type"`
+	Description string    `json:"description"`
+	UserID      string    `json:"userId"`
+	TicketID    *string   `json:"ticketId,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 // ActivityResponse is the JSON-safe version
@@ -180,10 +173,8 @@ func (a *ActivityItem) ToResponse() ActivityResponse {
 		Type:        a.Type,
 		Description: a.Description,
 		UserID:      a.UserID,
+		TicketID:    a.TicketID,
 		CreatedAt:   a.CreatedAt,
-	}
-	if a.TicketID.Valid {
-		r.TicketID = &a.TicketID.String
 	}
 	return r
 }

@@ -8,8 +8,8 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"
 	"github.com/supporttickr/backend/internal/config"
-	"github.com/supporttickr/backend/internal/database"
 	"github.com/supporttickr/backend/internal/routes"
+	"github.com/supporttickr/backend/internal/store"
 )
 
 var adapter *httpadapter.HandlerAdapterV2
@@ -19,12 +19,13 @@ func init() {
 
 	cfg := config.Load()
 
-	db, err := database.Connect(cfg)
+	ctx := context.Background()
+	st, err := store.NewStore(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Failed to create store: %v", err)
 	}
 
-	handler := routes.Setup(db, cfg)
+	handler := routes.Setup(st, cfg)
 	adapter = httpadapter.NewV2(handler)
 
 	log.Println("Lambda initialization complete")

@@ -1,20 +1,19 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/supporttickr/backend/internal/middleware"
 	"github.com/supporttickr/backend/internal/models"
+	"github.com/supporttickr/backend/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
-	DB        *sql.DB
+	Store     store.Store
 	JWTSecret string
-	Schema    string
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -29,18 +28,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user models.User
-	err := h.DB.QueryRow(
-		`SELECT id, name, email, password_hash, role, organization_id, avatar FROM `+h.Schema+`.users WHERE email = $1`,
-		req.Email,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.OrganizationID, &user.Avatar)
-
-	if err == sql.ErrNoRows {
+	user, err := h.Store.GetUserByEmail(r.Context(), req.Email)
+	if err != nil || user == nil {
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 
@@ -50,8 +40,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	orgID := ""
-	if user.OrganizationID.Valid {
-		orgID = user.OrganizationID.String
+	if user.OrganizationID != nil {
+		orgID = *user.OrganizationID
 	}
 
 	claims := &middleware.Claims{
@@ -80,13 +70,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 
-	var user models.User
-	err := h.DB.QueryRow(
-		`SELECT id, name, email, password_hash, role, organization_id, avatar FROM `+h.Schema+`.users WHERE id = $1`,
-		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.OrganizationID, &user.Avatar)
-
-	if err != nil {
+	user, err := h.Store.GetUser(r.Context(), userID)
+	if err != nil || user == nil {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	}

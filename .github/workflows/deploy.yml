@@ -10,7 +10,6 @@ on:
         type: choice
         options:
           - all
-          - db-only
           - lambda-only
           - s3-cloudfront-only
 
@@ -19,11 +18,6 @@ on:
 #   AWS_ACCESS_KEY_ID        - IAM user with Lambda, S3, CloudFront, SAM
 #   AWS_SECRET_ACCESS_KEY    - IAM user secret
 #   AWS_REGION               - e.g. us-east-1
-#   DB_HOST                  - RDS endpoint (for Lambda/API)
-#   DB_PORT                  - default 5432
-#   DB_USER                  - postgres user
-#   DB_PASSWORD              - postgres password
-#   DB_NAME                  - database name (e.g. supporttickr)
 #   JWT_SECRET               - signing key for JWT tokens
 #   S3_BUCKET_NAME           - S3 bucket for frontend
 #   CLOUDFRONT_DISTRIBUTION  - CloudFront distribution ID
@@ -31,16 +25,12 @@ on:
 #   API_GATEWAY_URL          - (optional) Custom API URL for frontend build, e.g. https://api.supportfix.ai
 #   ACM_CERTIFICATE_ARN      - (optional) ACM cert ARN for custom domain
 #   SAM_S3_BUCKET            - S3 bucket for SAM deployment artifacts
-#   VPC_ID                   - VPC ID for Lambda (e.g. vpc-0abc123def456)
-#   SUBNET_IDS               - Subnet IDs for Lambda, comma-separated (e.g. subnet-xxx,subnet-yyy)
 #
-# Note: API Gateway is created/updated automatically by the SAM stack (supportdesk-api).
-#       You do NOT need to create API Gateway ahead of time.
+# Note: API Gateway and DynamoDB tables are created/updated by the SAM stack (supportdesk-api).
 # -------------------------------------------------------------------
 
 env:
   NODE_VERSION: "20"
-  DB_SCHEMA: mysupporttickr
 
 jobs:
   # ================================================================
@@ -52,7 +42,6 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
-      database: ${{ steps.filter.outputs.database }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -67,91 +56,18 @@ jobs:
               - 'lib/**'
               - 'package.json'
               - 'tailwind.config.ts'
-            database:
-              - 'backend/db/**'
 
   # ================================================================
-  # Job 2: Database migration (runs DDL + any new migration scripts)
-  # ================================================================
-  deploy-database:
-    name: Migrate Database
-    runs-on: ubuntu-latest
-    needs: changes
-    # When manually run: only if user chose db-only or all. Otherwise skip (e.g. lambda-only / s3-cloudfront-only).
-    if: |
-      (github.event.inputs.deploy_target == 'db-only' || github.event.inputs.deploy_target == 'all') ||
-      (needs.changes.outputs.database == 'true' && github.event.inputs.deploy_target != 'lambda-only' && github.event.inputs.deploy_target != 's3-cloudfront-only')
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
-      - name: Run DDL (idempotent)
-        env:
-          PGHOST: ${{ secrets.DB_HOST }}
-          PGPORT: ${{ secrets.DB_PORT }}
-          PGUSER: ${{ secrets.DB_USER }}
-          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
-          PGDATABASE: ${{ secrets.DB_NAME }}
-          PGSSLMODE: require
-        run: |
-          echo "=== Running DDL ==="
-          psql -f backend/db/ddl.sql
-          echo "=== DDL complete ==="
-
-      - name: Run migration scripts (if any new ones)
-        env:
-          PGHOST: ${{ secrets.DB_HOST }}
-          PGPORT: ${{ secrets.DB_PORT }}
-          PGUSER: ${{ secrets.DB_USER }}
-          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
-          PGDATABASE: ${{ secrets.DB_NAME }}
-          PGSSLMODE: require
-        run: |
-          # Create tracking table if not exists
-          psql -c "
-            CREATE TABLE IF NOT EXISTS ${DB_SCHEMA}.migrations_applied (
-              filename TEXT PRIMARY KEY,
-              applied_at TIMESTAMPTZ DEFAULT NOW()
-            );
-          "
-
-          # Run any new migration files in order
-          if [ -d "backend/db/migrations" ]; then
-            for file in $(ls backend/db/migrations/*.sql 2>/dev/null | sort); do
-              fname=$(basename "$file")
-              already=$(psql -tAc "SELECT COUNT(*) FROM ${DB_SCHEMA}.migrations_applied WHERE filename = '${fname}'")
-              if [ "$already" = "0" ]; then
-                echo "=== Applying migration: $fname ==="
-                psql -f "$file"
-                psql -c "INSERT INTO ${DB_SCHEMA}.migrations_applied (filename) VALUES ('${fname}')"
-                echo "=== Applied: $fname ==="
-              else
-                echo "--- Skipping (already applied): $fname ---"
-              fi
-            done
-          else
-            echo "No migrations directory found, skipping incremental migrations."
-          fi
-
-  # ================================================================
-  # Job 3: Build and deploy Go backend (Lambda + API Gateway in one stack)
+  # Job 2: Build and deploy Go backend (Lambda + API Gateway + DynamoDB)
   # ================================================================
   deploy-backend:
     name: Deploy Backend (Lambda + API Gateway)
     runs-on: ubuntu-latest
-    needs: [changes, deploy-database]
+    needs: changes
     if: |
-      always() &&
-      (needs.deploy-database.result == 'success' || needs.deploy-database.result == 'skipped') &&
-      (
-        (needs.changes.outputs.backend == 'true') ||
-        (github.event.inputs.deploy_target == 'lambda-only') ||
-        (github.event.inputs.deploy_target == 'all')
-      )
+      (needs.changes.outputs.backend == 'true') ||
+      (github.event.inputs.deploy_target == 'lambda-only') ||
+      (github.event.inputs.deploy_target == 'all')
     steps:
       - uses: actions/checkout@v4
 
@@ -184,18 +100,11 @@ jobs:
         run: |
           zip -j function.zip bootstrap
 
-      - name: Check required Lambda VPC secrets
-        run: |
-          if [[ -z "${{ secrets.VPC_ID }}" ]] || [[ -z "${{ secrets.SUBNET_IDS }}" ]]; then
-            echo "::error::GitHub secrets VPC_ID and SUBNET_IDS must be set for Lambda deploy (repo Settings -> Secrets -> Actions)."
-            exit 1
-          fi
-          echo "VPC and Subnet secrets are set."
-
       - name: Remove stack if in failed/rollback state
         run: |
           STATUS=$(aws cloudformation describe-stacks --stack-name supportdesk-api --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "DOES_NOT_EXIST")
-          if [[ "$STATUS" == "ROLLBACK_COMPLETE" ]] || [[ "$STATUS" == "CREATE_FAILED" ]] || [[ "$STATUS" == "ROLLBACK_FAILED" ]]; then
+          # Delete if stack failed, rolled back, or was updated after resources were deleted (e.g. API GW deleted in console)
+          if [[ "$STATUS" == "ROLLBACK_COMPLETE" ]] || [[ "$STATUS" == "CREATE_FAILED" ]] || [[ "$STATUS" == "ROLLBACK_FAILED" ]] || [[ "$STATUS" == "UPDATE_ROLLBACK_COMPLETE" ]]; then
             echo "Stack is in $STATUS - deleting so deploy can create a fresh stack..."
             aws cloudformation delete-stack --stack-name supportdesk-api
             echo "Waiting for stack delete to complete..."
@@ -221,15 +130,8 @@ jobs:
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
-              DBHost=${{ secrets.DB_HOST }} \
-              DBPort=${{ secrets.DB_PORT }} \
-              DBUser=${{ secrets.DB_USER }} \
-              DBPassword=${{ secrets.DB_PASSWORD }} \
-              DBName=${{ secrets.DB_NAME }} \
               JWTSecret=${{ secrets.JWT_SECRET }} \
-              FrontendURL=${{ secrets.FRONTEND_URL || '*' }} \
-              VpcId=${{ secrets.VPC_ID }} \
-              SubnetIds=${{ secrets.SUBNET_IDS }}
+              FrontendURL=${{ secrets.FRONTEND_URL || '*' }}
 
       - name: Show stack failure reason (if deploy failed)
         if: failure()
@@ -255,19 +157,18 @@ jobs:
           echo "Lambda + API Gateway deployed. API URL: $API_URL"
 
   # ================================================================
-  # Job 4: Build and deploy Next.js frontend to S3 + CloudFront
+  # Job 3: Build and deploy Next.js frontend to S3 + CloudFront
   # ================================================================
   deploy-frontend:
     name: Deploy Frontend (S3 + CloudFront)
     runs-on: ubuntu-latest
     needs: [changes, deploy-backend]
-    # When manually run: only if user chose s3-cloudfront-only or all. Otherwise skip (e.g. lambda-only / db-only).
     if: |
       always() &&
       (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped') &&
       (
         (github.event.inputs.deploy_target == 's3-cloudfront-only' || github.event.inputs.deploy_target == 'all') ||
-        (needs.changes.outputs.frontend == 'true' && github.event.inputs.deploy_target != 'lambda-only' && github.event.inputs.deploy_target != 'db-only')
+        (needs.changes.outputs.frontend == 'true' && github.event.inputs.deploy_target != 'lambda-only')
       )
     steps:
       - uses: actions/checkout@v4
@@ -369,12 +270,12 @@ jobs:
           echo "Frontend deployed at: https://$DOMAIN"
 
   # ================================================================
-  # Job 5: Post-deploy summary
+  # Job 4: Post-deploy summary
   # ================================================================
   summary:
     name: Deployment Summary
     runs-on: ubuntu-latest
-    needs: [deploy-database, deploy-backend, deploy-frontend]
+    needs: [deploy-backend, deploy-frontend]
     if: always()
     steps:
       - name: Print summary
@@ -383,15 +284,12 @@ jobs:
           echo "  SupportDesk Deployment Summary"
           echo "========================================"
           echo ""
-          echo "Database:  ${{ needs.deploy-database.result }}"
           echo "Lambda:    ${{ needs.deploy-backend.result }}"
           echo "S3 + CF:   ${{ needs.deploy-frontend.result }}"
           echo ""
           echo "========================================"
 
-          # Fail if any critical job failed
-          if [[ "${{ needs.deploy-database.result }}" == "failure" ]] || \
-             [[ "${{ needs.deploy-backend.result }}" == "failure" ]] || \
+          if [[ "${{ needs.deploy-backend.result }}" == "failure" ]] || \
              [[ "${{ needs.deploy-frontend.result }}" == "failure" ]]; then
             echo "One or more deployments failed!"
             exit 1

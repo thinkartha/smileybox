@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: SupportDesk API - Lambda + API Gateway + RDS PostgreSQL
+Description: SupportDesk API - Lambda + API Gateway + DynamoDB
 
 Globals:
   Function:
@@ -11,32 +11,18 @@ Globals:
       - x86_64
     Environment:
       Variables:
-        DB_HOST: !Ref DBHost
-        DB_PORT: !Ref DBPort
-        DB_USER: !Ref DBUser
-        DB_PASSWORD: !Ref DBPassword
-        DB_NAME: !Ref DBName
-        DB_SCHEMA: mysupporttickr
-        DB_SSLMODE: require
         JWT_SECRET: !Ref JWTSecret
         FRONTEND_URL: !Ref FrontendURL
+        USERS_TABLE: !Ref UsersTable
+        ORGS_TABLE: !Ref OrgsTable
+        TICKETS_TABLE: !Ref TicketsTable
+        MESSAGES_TABLE: !Ref MessagesTable
+        TIME_ENTRIES_TABLE: !Ref TimeEntriesTable
+        CONVERSION_REQUESTS_TABLE: !Ref ConversionRequestsTable
+        INVOICES_TABLE: !Ref InvoicesTable
+        ACTIVITIES_TABLE: !Ref ActivitiesTable
 
 Parameters:
-  DBHost:
-    Type: String
-    Description: RDS PostgreSQL hostname
-  DBPort:
-    Type: String
-    Default: '5432'
-  DBUser:
-    Type: String
-    Default: supportdesk
-  DBPassword:
-    Type: String
-    NoEcho: true
-  DBName:
-    Type: String
-    Default: supporttickr
   JWTSecret:
     Type: String
     NoEcho: true
@@ -44,13 +30,7 @@ Parameters:
   FrontendURL:
     Type: String
     Default: '*'
-    Description: Frontend URL for CORS (e.g., https://yourdomain.com)
-  VpcId:
-    Type: String
-    Description: VPC ID for Lambda (e.g. vpc-0abc123def456)
-  SubnetIds:
-    Type: CommaDelimitedList
-    Description: Subnet IDs for Lambda (comma-separated, e.g. subnet-xxx,subnet-yyy)
+    Description: Frontend URL for CORS (e.g., https://supportfix.ai)
 
 Resources:
   SupportDeskApi:
@@ -83,31 +63,169 @@ Resources:
             ApiId: !Ref SupportDeskApi
             Path: /{proxy+}
             Method: ANY
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
-        SubnetIds: !Ref SubnetIds
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: supportdesk-users
+        - DynamoDBCrudPolicy:
+            TableName: supportdesk-organizations
+        - DynamoDBCrudPolicy:
+            TableName: supportdesk-tickets
+        - DynamoDBCrudPolicy:
+            TableName: supportdesk-messages
+        - DynamoDBCrudPolicy:
+            TableName: supportdesk-time-entries
+        - DynamoDBCrudPolicy:
+            TableName: supportdesk-conversion-requests
+        - DynamoDBCrudPolicy:
+            TableName: supportdesk-invoices
+        - DynamoDBCrudPolicy:
+            TableName: supportdesk-activities
     Metadata:
       BuildMethod: makefile
 
-  LambdaSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
+  UsersTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      GroupDescription: Security group for SupportDesk Lambda function
-      VpcId: !Ref VpcId
-      SecurityGroupEgress:
-        # HTTPS for AWS APIs (S3, CloudWatch, etc.)
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: HTTPS for AWS APIs
-        # PostgreSQL (RDS)
-        - IpProtocol: tcp
-          FromPort: 5432
-          ToPort: 5432
-          CidrIp: 0.0.0.0/0
-          Description: PostgreSQL/RDS
+      TableName: supportdesk-users
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  OrgsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: supportdesk-organizations
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  TicketsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: supportdesk-tickets
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: organization_id
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: org-created-index
+          KeySchema:
+            - AttributeName: organization_id
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  MessagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: supportdesk-messages
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ticket_id
+          AttributeType: S
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ticket_id
+          KeyType: HASH
+        - AttributeName: id
+          KeyType: RANGE
+
+  TimeEntriesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: supportdesk-time-entries
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ticket_id
+          AttributeType: S
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ticket_id
+          KeyType: HASH
+        - AttributeName: id
+          KeyType: RANGE
+
+  ConversionRequestsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: supportdesk-conversion-requests
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: ticket_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ticket-id-index
+          KeySchema:
+            - AttributeName: ticket_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  InvoicesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: supportdesk-invoices
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: organization_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: org-index
+          KeySchema:
+            - AttributeName: organization_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  ActivitiesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: supportdesk-activities
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
 
 Outputs:
   ApiUrl:
