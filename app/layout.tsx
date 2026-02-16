@@ -10,7 +10,7 @@ const mono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "SupportDesk Pro",
+  title: "SupportFIX Pro",
   description: "Enterprise support ticket management portal",
 }
 

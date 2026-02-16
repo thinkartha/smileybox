@@ -116,7 +116,7 @@ export function SettingsPage() {
             <div>
               <p className="text-xs font-medium text-foreground">Application Version</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                SupportDesk v1.0.0
+                SupportFIX v1.0.0
               </p>
             </div>
             <span className="text-[10px] font-mono text-muted-foreground">

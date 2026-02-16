@@ -133,7 +133,7 @@ export function AppSidebar({ activeSection, onSectionChange }: AppSidebarProps) 
           <Headphones className="h-4 w-4 text-primary" />
         </div>
         <span className="text-sm font-bold tracking-wider text-foreground uppercase">
-          SupportDesk
+          SupportFIX
         </span>
       </div>
 
