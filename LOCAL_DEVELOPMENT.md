@@ -102,33 +102,23 @@ Frontend will be at **http://localhost:3000**.
 
 ---
 
-## 4. First user (no sign-up flow)
+## 4. First user (admin)
 
-There is **no sign-up flow**. Users are created by admins (Settings → Users) or by inserting a user into DynamoDB.
-
-**Create a user in DynamoDB** (e.g. via AWS CLI or a small script):
-
-- **Table:** `supportdesk-users` (or your `USERS_TABLE`)
-- **Attributes:** `id` (string), `name`, `email`, `password_hash` (bcrypt of your password), `role`, `avatar`, `created_at` (ISO8601).
-- Optional: `organization_id` for client users.
-
-Example (AWS CLI, after tables exist):
+There is **no sign-up flow**. Create an admin user with the seed script:
 
 ```bash
-# Create an admin user (password: password123)
-# Generate bcrypt hash first, e.g. with a small Go script or online tool, then:
-aws dynamodb put-item --table-name supportdesk-users --item '{
-  "id": {"S": "user-admin-1"},
-  "name": {"S": "Admin"},
-  "email": {"S": "admin@supportdesk.io"},
-  "password_hash": {"S": "$2a$10$rQEY0tKMmRhSIxMpKsN2OeYHUYNhZxJcWFSgj6wXlLhOqIGxT3FPa"},
-  "role": {"S": "admin"},
-  "avatar": {"S": "AD"},
-  "created_at": {"S": "2025-01-01T00:00:00Z"}
-}'
+cd backend
+export AWS_REGION=us-east-1   # or your region
+
+go run ./scripts/seed-admin \
+  -email admin@supportfix.ai \
+  -password "your-secure-password" \
+  -name "Admin"
 ```
 
-Then log in with **admin@supportdesk.io** / **password123**.
+Then log in with that email and password.
+
+See `backend/scripts/SEED-ADMIN.md` for options and AWS CLI alternative.
 
 ---
 

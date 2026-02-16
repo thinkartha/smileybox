@@ -126,13 +126,13 @@ export function SettingsPage() {
 
           <div className="flex items-center justify-between rounded-md border border-border bg-secondary/30 px-4 py-3">
             <div>
-              <p className="text-xs font-medium text-foreground">Database Schema</p>
+              <p className="text-xs font-medium text-foreground">Database</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                mysupporttickr
+                DynamoDB tables (supportdesk-*)
               </p>
             </div>
             <span className="text-[10px] font-mono text-muted-foreground">
-              PostgreSQL
+              AWS DynamoDB
             </span>
           </div>
         </div>
@@ -191,18 +191,13 @@ export function SettingsPage() {
               Docker Compose Quick Start
             </p>
             <pre className="text-xs text-foreground font-mono leading-relaxed overflow-x-auto">
-{`# With bundled PostgreSQL
-docker compose --profile db up -d
-
-# With external PostgreSQL
-export DB_HOST=your-host
-export DB_PORT=5432
+{`# Backend uses DynamoDB - ensure AWS credentials are configured
 docker compose up -d`}
             </pre>
             <p className="mt-3 text-[10px] text-muted-foreground leading-relaxed">
               Copy <span className="font-mono text-foreground">.env.example</span> to{" "}
-              <span className="font-mono text-foreground">.env</span> and configure database
-              credentials before starting.
+              <span className="font-mono text-foreground">.env</span> and set JWT_SECRET,
+              FRONTEND_URL, and any DynamoDB table overrides.
             </p>
           </div>
         </div>

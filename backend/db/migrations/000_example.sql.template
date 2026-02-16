@@ -1,7 +1,0 @@
--- Migration template
--- Rename this file to NNN_description.sql (e.g., 001_add_tags_to_tickets.sql)
--- The deploy workflow runs migrations in alphabetical order and tracks which have been applied.
--- Migrations are idempotent and run inside the mysupporttickr schema.
-
--- SET search_path TO mysupporttickr, public;
--- ALTER TABLE tickets ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';

@@ -32,9 +32,6 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /app/server .
 
-# Copy SQL files (for reference/manual seeding)
-COPY --from=builder /app/db ./db
-
 EXPOSE 8080
 
 CMD ["./server"]
